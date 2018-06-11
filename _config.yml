@@ -4,7 +4,7 @@ header-img: "img/zhihu.jpg"
 tagline: "cn"  
 description: "About Security"  # 一句话描述你的博客
 baseurl: ""
-url: "http://www.zzz4ck.com"  # 此处填写你的博客地址 
+url: "https://www.zzz4ck.com"  # 此处填写你的博客地址 
 
 # About/contact
 owner: 
@@ -33,7 +33,7 @@ paginate: 8
 exclude: ["less","node_modules","Gruntfile.js","package.json","README.md"]
 
 # http://en.wikipedia.org/wiki/List_of_tz_database_time_zones
-timezone: Asia/Shanghai
+timezone: Asia/Guangdong
 
 # Defaults for posts
 defaults:
