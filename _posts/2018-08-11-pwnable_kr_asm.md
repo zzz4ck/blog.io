@@ -13,14 +13,14 @@ asm题是一道需要依靠shellcode来解题的，虽然python的pwntools包含
 
 ## asm原题
 ```
-#include &lt;stdio.h&gt;
-#include &lt;string.h&gt;
-#include &lt;stdlib.h&gt;
-#include &lt;sys/mman.h&gt;
-#include &lt;seccomp.h&gt;
-#include &lt;sys/prctl.h&gt;
-#include &lt;fcntl.h&gt;
-#include &lt;unistd.h&gt;
+#include "stdio.h"
+#include "string.h"
+#include "stdlib.h"
+#include "sys/mman.h"
+#include "seccomp.h"
+#include "sys/prctl.h"
+#include "fcntl.h"
+#include "unistd.h"
 
 #define LENGTH 128
 
