@@ -9,21 +9,35 @@ description:
 
 ## 简介
 CTF中的一道PWN题，漏洞点是off by one NULL。由于之前未做过堆利用的题目，而该题又涉及多个堆的知识点，因此做个笔记，以新手视角记录如何解决该题。
+
 该题涉及的知识点（后文会展开讲解）：
+
 a) 堆信息泄露（堆地址&libc地址）
+
 b) off_by_one_NULL
+
 c) unlink
+
 d) overlap
+
 e) fastbin attack
+
 ps:膜一波某白神，作为新手能理解该题，全靠某白神的writeup。
 
 ## curse_note题目描述
 OS:     Ubuntu 64位
+
 libc：  glibc 2.23
+
+
 基础防护：
+
 RELRO:    Partial RELRO
+
 Stack:    Canary found
+
 NX:       NX enabled
+
 PIE:      PIE enabled
 
 由于题目非外部公开，因此就不放原题了，该部分仅描述题目的逻辑和重点。
@@ -97,18 +111,28 @@ __int64 new_note()
 ## 解题思路
 
 根据分析new_note函数，我们发现了三个问题：
+
 1) malloc时未限制size大小
+
 2) 未判断malloc是否成功
+
 3) 内存使用前未清零
 
+
 这三个问题可进行如下利用：
+
 1) 利用问题3，可以泄露堆地址和libc地址（从链表中取下堆块时，可以读到堆块在仍在链表里时的前项和后项，即fd和bk）
+
 2) 利用问题1和2，可以造成off_by_one_NULL（size过大时malloc返回0，`*((_BYTE *)note_array[index] + size - 1) = 0;`等价于`*((_BYTE *) size - 1) = 0;`，即任意地址写零）
 
 因此大致的解题思路如下：
+
 1) 泄露堆地址和libc地址
+
 2) 利用off_by_one_NULL和unlink构造fastbin的overlap
+
 3) 利用fastbin attack和libc地址，将__malloc_hook的got修改为one_gadget
+
 
 ## 解题过程
 
@@ -120,8 +144,10 @@ __int64 new_note()
 
 ###1) 泄露堆地址和libc地址
 
-bin中的chunk以链表的形式保存，将chunk从列表取下后，若未执行memset等清零操作，将能读取到链表的指针，即chunk的fd和bk
+bin中的chunk以链表的形式保存，将chunk从列表取下后，若未执行memset等清零操作，将能读取到链表的指针，即chunk的fd和bk。
+
 不同的bin使用了不同的链表，本次使用unsortbin的双向链表，以方便一次性获取堆地址和libc地址
+
 通过代码构造unsortbin如下：
 ![](https://raw.githubusercontent.com/zzz4ck/zzz4ck.github.io/master/screenshot/note_step1.PNG)
 
@@ -155,6 +181,7 @@ delete_note(2)
 ```
 
 这里有个坑，由于malloc大size失败后，再次malloc时glibc会从thread_arena中分配内存，而不继续使用main_arena。
+
 因此这里还需要先泄露thread_arena的地址（泄露方法同上）:
 ```
 # 2. switch thread_arena and leak address
@@ -180,9 +207,11 @@ delete_note(2)
 ###2) 利用off_by_one_NULL和unlink构造fastbin的overlap
 
 接下来开始布局overlap
+
 注：overlap可以理解为堆块重叠，chunk_AAA中包含了chunk_BBB
 
 此处需说明下，由于我们的操作都在thread_arena中进行，因此每个堆块的的NON_MAIN_ARENA位需要为1（即size&0x4==1）
+
 因此我们通过off_by_one_NULL清空pre_isused的时候，也会把NON_MAIN_ARENA清空，所以需要先清空chunk_CCC的pre_isused位后，再分配chunk_CCC，将NON_MAIN_ARENA复位为1。
 
 unlink前的布局如下：
@@ -235,10 +264,12 @@ gdb-peda$ arenainfo
 gdb-peda$ 
 ```
 
+
 ###3) fastbin attack
 现在我们手头有一个size为0x260并处于unsortbin的chunk，同时在该chunk中overlap了一个size为0x70的fastbin chunk。
 
 >Q：为什么overlap的chunk的size要是0x70？
+>
 >A：因为fastbin的范围为0x20~0xb0，__malloc_hook附近只有高位地址的0x7f适合作为chunk的size，因此我们的chunk的size选用0x70，否则报错。
 
 因此我们可以通过malloc unsortbin中的chunk，往overlap的chunk_BBB中填写数据，使得chunk_BBB的fd指向包含了__malloc_hook的数据块，第二次分配fastbin chunk时，即可对__malloc_hook进行改写。
