@@ -266,6 +266,7 @@ gdb-peda$
 
 
 ###3) fastbin attack
+
 现在我们手头有一个size为0x260并处于unsortbin的chunk，同时在该chunk中overlap了一个size为0x70的fastbin chunk。
 
 >Q：为什么overlap的chunk的size要是0x70？
