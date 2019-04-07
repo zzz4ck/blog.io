@@ -24,7 +24,7 @@ e) fastbin attack
 
 ps:膜一波某白神，作为新手能理解该题，全靠某白神的writeup。
 
-## curse_note题目描述
+## xxxx_note题目描述
 OS:     Ubuntu 64位
 
 libc：  glibc 2.23
@@ -426,7 +426,7 @@ exit()
 
 运行效果：
 ```
-$ python curse_note_wp.py 
+$ python xxxx_note_wp.py 
 [*] '/lib/x86_64-linux-gnu/libc.so.6'
     Arch:     amd64-64-little
     RELRO:    Partial RELRO
