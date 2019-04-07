@@ -346,7 +346,7 @@ context.arch = 'amd64'
 context.log_level = 'info'
 libc_elf = ELF('/lib/x86_64-linux-gnu/libc.so.6')
 
-p = process("./curse_note_patch")
+p = process("./xxxx_note")
 p.recvuntil("choice: ")
 
 # 1. leak heap & libc address
