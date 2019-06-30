@@ -21,76 +21,77 @@ Egg就是大的shellcode，Hunter就是小的shellcode。类比于web漏洞挖�
 ## 基本原理
 1. Egg Hunter
 
-《Safely Searching Process Virtual Address Space》对Egg Hunter介绍的比较详细了，如果感兴趣的可以去读原文。
-
-一句话介绍原理：全内存扫描带有指定关键字的代码。
-
-因此Egg Hunter主要是如下两个关键点：
-
-1) 内存扫描
-
-一般的做法是直接从0x0000开始，通过递增地址，来取内存的值。但是程序运行的内存不是所有地址都能正常访问，比如几乎所有程序的0x0000都不可访问，所以需要有一个判断内存是否可访问的逻辑。
-
-在Skape的文章中罗列了几种判断方式：
-
-Linux下使用access、sigaction等内核函数来做判断，如果地址不可访问，这些函数会返回0xf2。
-
-Windows下也有类似的函数，如IsBadReadPtr、NtDisplayString函数。
-
-注：metasploit生成的Egg hunter使用的是NtAccessCheckAndAuditAlarm函数，原理一致。
-
-如果当前地址不可访问，则跳到下一个内存页。因为内存一般都是4k大小页对齐的，所以当前地址无法访问则可以判定该地址所在内存页都无法访问，可以提高扫描速度。
-
-这一步骤也是Egg Hunter的核心，可能花费较长的时间，而且可能造成CPU使用率飙升。在实际应用中可以结合场景进行优化，例如Egg放到了栈中，则可以从栈顶开始搜索。具体情况具体分析，骚姿势可以有很多。
-
-2) 对比关键字
-
-由于需要扫描内存来找到我们的Egg，那么一定要有个独特的标记，来表示我们找到了。因此不建议直接拿shellcode的前几个字节作为标记(不够独特)，而是由我们自己指定标记，如0x50905090、0x5a5a5a5a等等，反正就是要独特，然后放到shellcode的前面。
-
-这里需要注意的是，我们的标记虽然独特了，但是在内存中除了Egg具有这个标记，Hunter页带了这个标记(毕竟是要做比较的)。。。
-
-为了解决这个问题，Skape的建议是Egg的标记重复两次，比如Egg的开头是0x5090509050905090，Hunter在比较的时候，连续比较两次0x50905090，则认为找到Egg。
+    《Safely Searching Process Virtual Address Space》对Egg Hunter介绍的比较详细了，如果感兴趣的可以去读原文。
+    
+    一句话介绍原理：全内存扫描带有指定关键字的代码。
+    
+    因此Egg Hunter主要是如下两个关键点：
+    
+    1) 内存扫描
+    
+    一般的做法是直接从0x0000开始，通过递增地址，来取内存的值。但是程序运行的内存不是所有地址都能正常访问，比如几乎所有程序的0x0000都不可访问，所以需要有一个判断内存是否可访问的逻辑。
+    
+    在Skape的文章中罗列了几种判断方式：
+    
+    Linux下使用access、sigaction等内核函数来做判断，如果地址不可访问，这些函数会返回0xf2。
+    
+    Windows下也有类似的函数，如IsBadReadPtr、NtDisplayString函数。
+    
+    >注：metasploit生成的Egg hunter使用的是NtAccessCheckAndAuditAlarm函数，原理一致。
+    
+    如果当前地址不可访问，则跳到下一个内存页。因为内存一般都是4k大小页对齐的，所以当前地址无法访问则可以判定该地址所在内存页都无法访问，可以提高扫描速度。
+    
+    这一步骤也是Egg Hunter的核心，可能花费较长的时间，而且可能造成CPU使用率飙升。在实际应用中可以结合场景进行优化，例如Egg放到了栈中，则可以从栈顶开始搜索。具体情况具体分析，骚姿势可以有很多。
+    
+    2) 对比关键字
+    
+    由于需要扫描内存来找到我们的Egg，那么一定要有个独特的标记，来表示我们找到了。因此不建议直接拿shellcode的前几个字节作为标记(不够独特)，而是由我们自己指定标记，如0x50905090、0x5a5a5a5a等等，反正就是要独特，然后放到shellcode的前面。
+    
+    这里需要注意的是，我们的标记虽然独特了，但是在内存中除了Egg具有这个标记，Hunter页带了这个标记(毕竟是要做比较的)。。。
+    
+    为了解决这个问题，Skape的建议是Egg的标记重复两次，比如Egg的开头是0x5090509050905090，Hunter在比较的时候，连续比较两次0x50905090，则认为找到Egg。
+    
 
 2. SEH
 
-如果看了Skape文章的话，会发现在判断内存是否可以访问的逻辑中，除了调用内核函数直接判断，他还提出了在Windows下可以利用SEH的方式来处理。
-
-SEH全称structured exception handling，简单来说就是异常处理。应用在Egg Hunter中，就是在出现地址不可访问的时候，直接到SEH中进行统一的处理，来屏蔽这个异常。
-
-Windows采用了链表的方式来构造，在出现异常的时候通过遍历链表，找到第一个能处理异常的SEH来执行。
-
-SEH的结构体如下：
-
-```
-typedef struct _EXCEPTION_REGISTRATION_RECORD
-{
-struct _EXCEPTION_REGISTRATION_RECORD *Next;    //这里指向链表中的下一个SEH
-EXCEPTION_DISPOSITION (*Handler)(
-struct _EXCEPTION_RECORD *record,
-void *frame,
-struct _CONTEXT *ctx,
-void *dispctx);
-} EXCEPTION_REGISTRATION_RECORD, *PEXCEPTION_REGISTRATION_RECORD;
-```
-
-SEH链表头为fs:[0]，fs是一个段寄存器，fs:[0]指向第一个SEH结构体的地址。第一个SEH结构体通过Next指针指向下一个SEH结构体。
-
-在c语言中，我们可以在代码中通过try/exception来自己注册SEH，如下：
-
-```
-int main()
-{
-    __try   //可以编译一个程序通过IDA查看，发现在__try之前，编译器就帮忙注册了相应的SEH
+    如果看了Skape文章的话，会发现在判断内存是否可以访问的逻辑中，除了调用内核函数直接判断，他还提出了在Windows下可以利用SEH的方式来处理。
+    
+    SEH全称structured exception handling，简单来说就是异常处理。应用在Egg Hunter中，就是在出现地址不可访问的时候，直接到SEH中进行统一的处理，来屏蔽这个异常。
+    
+    Windows采用了链表的方式来构造，在出现异常的时候通过遍历链表，找到第一个能处理异常的SEH来执行。
+    
+    SEH的结构体如下：
+    
+    ```
+    typedef struct _EXCEPTION_REGISTRATION_RECORD
     {
-        //TODO
+    struct _EXCEPTION_REGISTRATION_RECORD *Next;    //这里指向链表中的下一个SEH
+    EXCEPTION_DISPOSITION (*Handler)(
+    struct _EXCEPTION_RECORD *record,
+    void *frame,
+    struct _CONTEXT *ctx,
+    void *dispctx);
+    } EXCEPTION_REGISTRATION_RECORD, *PEXCEPTION_REGISTRATION_RECORD;
+    ```
+    
+    SEH链表头为fs:[0]，fs是一个段寄存器，fs:[0]指向第一个SEH结构体的地址。第一个SEH结构体通过Next指针指向下一个SEH结构体。
+    
+    在c语言中，我们可以在代码中通过try/exception来自己注册SEH，如下：
+    
+    ```
+    int main()
+    {
+        __try   //可以编译一个程序通过IDA查看，发现在__try之前，编译器就帮忙注册了相应的SEH
+        {
+            //TODO
+        }
+        __except(MyExceptionhander()){} 
     }
-    __except(MyExceptionhander()){} 
-}
-```
-
-但是我们的Hunter又不是在编译阶段塞到程序里的，因此我们想要用一个SEH来处理内存地址访问异常，那就需要自己注册一个SEH。
-
-既然SEH本身是个链表结构，那注册的方式就简单了，直接把fs:[0]的地址指向我们的SEH即可，为了避免SEH链表出现异常，我们在自己的SEH结构体中把Next指向0xffffffff，这样注册完，整个SEH链表中就只有我们这一个SEH了。
+    ```
+    
+    但是我们的Hunter又不是在编译阶段塞到程序里的，因此我们想要用一个SEH来处理内存地址访问异常，那就需要自己注册一个SEH。
+    
+    既然SEH本身是个链表结构，那注册的方式就简单了，直接把fs:[0]的地址指向我们的SEH即可，为了避免SEH链表出现异常，我们在自己的SEH结构体中把Next指向0xffffffff，这样注册完，整个SEH链表中就只有我们这一个SEH了。
 
 ## ShellCode分析
 
